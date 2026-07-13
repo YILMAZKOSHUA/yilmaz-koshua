@@ -270,6 +270,7 @@
       flex-direction: column;
       gap: 1.25rem;
     }
+    .events-loading { color: var(--sage); font-style: italic; }
     .events-photo img {
       width: 100%;
       max-width: 280px;
@@ -566,49 +567,17 @@
     <!--
       ============================================================
       NEUES KONZERT HINZUFÜGEN — so geht's:
-      1. Den kompletten Block von "<div class="event-card">" bis zum
-         passenden schließenden "</div>" kopieren.
-      2. Einfügen (z.B. direkt vor diesem Kommentar) und die Texte
-         zwischen den spitzen Klammern anpassen: Tag, Monat, Titel,
-         Ort, Link.
-      3. Kein Ticket-/Info-Link vorhanden? Dann die ganze Zeile mit
-         "event-link" einfach löschen.
-      4. Geht das Konzert über mehrere Tage (z.B. Festival)? Dann bei
-         "event-date" zusätzlich class="range" ergänzen (kleinere Schrift,
-         damit "17–23" noch reinpasst) — siehe Beispiel unten.
-      5. Konzert vorbei? Den ganzen Block wieder löschen.
-      Die Reihenfolge der Blöcke bestimmt die Reihenfolge auf der Seite.
+      Die Konzerte kommen automatisch aus dieser Tabelle:
+      https://docs.google.com/spreadsheets/d/e/2PACX-1vSOF_DU4oueIv-mCP8AaVJWEcyi96Bk5SfAJ0fR70sPLc3BT38oFsTcXXDKLvQ-rJZx3HBiK7u1XywV/edit
+      Einfach dort eine Zeile hinzufügen, ändern oder löschen — die
+      Website übernimmt das automatisch, kein Hochladen nötig.
+      Spalten: Tag, Monat, Titel, Ort, Beschreibung, Link (Link optional,
+      Feld einfach leer lassen wenn keiner vorhanden).
       ============================================================
     -->
     <div class="events-grid">
-      <div class="events-list">
-
-        <div class="event-card">
-          <div class="event-date range">
-            <span class="event-day">17–23</span>
-            <span class="event-month">Aug</span>
-          </div>
-          <div class="event-info">
-            <h3>New Healing Festival</h3>
-            <p class="event-place">Preddöhler Stausee, Kümmernitztal (zwischen Berlin &amp; Hamburg)</p>
-            <p class="event-desc">Eine Woche Wellness &amp; elektronische Musik — Workshops, Yoga, Philosophie und Ecstatic Dance.</p>
-          </div>
-          <a href="https://www.newhealing.de/" class="event-link" target="_blank" rel="noopener">Mehr Infos</a>
-        </div>
-
-        <div class="event-card">
-          <div class="event-date">
-            <span class="event-day">15</span>
-            <span class="event-month">Aug</span>
-          </div>
-          <div class="event-info">
-            <h3>Konzert &amp; Kakao</h3>
-            <p class="event-place">Neue Speisekammer, Altes Gewölbe · Burgstraße 33, 30159 Hannover</p>
-            <p class="event-desc">19:30 Uhr — Zeremonieller Kakao von Maya Munay, danach Live-Konzert. Ticketpreis frei wählbar.</p>
-          </div>
-          <a href="https://www.neuespeisekammer.de/" class="event-link" target="_blank" rel="noopener">Mehr Infos</a>
-        </div>
-
+      <div class="events-list" id="events-list">
+        <p class="events-loading">Lade Termine …</p>
       </div>
       <div class="events-photo">
         <img src="img/live-catcow.jpg" alt="YILMAZ KOSHUA live beim Cat &amp; Cow Festival">
@@ -616,6 +585,95 @@
     </div>
   </div>
 </section>
+
+<script>
+(function() {
+  var EVENTS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSOF_DU4oueIv-mCP8AaVJWEcyi96Bk5SfAJ0fR70sPLc3BT38oFsTcXXDKLvQ-rJZx3HBiK7u1XywV/pub?output=csv';
+
+  function parseCSV(text) {
+    var rows = [];
+    var row = [];
+    var field = '';
+    var inQuotes = false;
+    for (var i = 0; i < text.length; i++) {
+      var c = text[i];
+      if (inQuotes) {
+        if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+        else if (c === '"') { inQuotes = false; }
+        else { field += c; }
+      } else {
+        if (c === '"') { inQuotes = true; }
+        else if (c === ',') { row.push(field); field = ''; }
+        else if (c === '\r') { /* skip */ }
+        else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+        else { field += c; }
+      }
+    }
+    if (field.length || row.length) { row.push(field); rows.push(row); }
+    return rows.filter(function(r) { return r.some(function(cell) { return cell.trim() !== ''; }); });
+  }
+
+  function esc(s) {
+    var div = document.createElement('div');
+    div.textContent = s == null ? '' : s;
+    return div.innerHTML;
+  }
+
+  function renderEvents(rows) {
+    var list = document.getElementById('events-list');
+    var header = rows[0].map(function(h) { return h.trim().toLowerCase(); });
+    var idx = {
+      tag: header.indexOf('tag'),
+      monat: header.indexOf('monat'),
+      titel: header.indexOf('titel'),
+      ort: header.indexOf('ort'),
+      beschreibung: header.indexOf('beschreibung'),
+      link: header.indexOf('link')
+    };
+    var dataRows = rows.slice(1);
+
+    if (!dataRows.length) {
+      list.innerHTML = '<p class="events-loading">Aktuell keine Termine eingetragen.</p>';
+      return;
+    }
+
+    var html = dataRows.map(function(r) {
+      var tag = (r[idx.tag] || '').trim();
+      var monat = (r[idx.monat] || '').trim();
+      var titel = (r[idx.titel] || '').trim();
+      var ort = (r[idx.ort] || '').trim();
+      var beschreibung = (r[idx.beschreibung] || '').trim();
+      var link = (r[idx.link] || '').trim();
+      var isRange = /[–-]/.test(tag);
+
+      return (
+        '<div class="event-card">' +
+          '<div class="event-date' + (isRange ? ' range' : '') + '">' +
+            '<span class="event-day">' + esc(tag) + '</span>' +
+            '<span class="event-month">' + esc(monat) + '</span>' +
+          '</div>' +
+          '<div class="event-info">' +
+            '<h3>' + esc(titel) + '</h3>' +
+            (ort ? '<p class="event-place">' + esc(ort) + '</p>' : '') +
+            (beschreibung ? '<p class="event-desc">' + esc(beschreibung) + '</p>' : '') +
+          '</div>' +
+          (link ? '<a href="' + esc(link) + '" class="event-link" target="_blank" rel="noopener">Mehr Infos</a>' : '') +
+        '</div>'
+      );
+    }).join('');
+
+    list.innerHTML = html;
+  }
+
+  fetch(EVENTS_CSV_URL)
+    .then(function(res) { return res.text(); })
+    .then(function(text) { renderEvents(parseCSV(text)); })
+    .catch(function() {
+      document.getElementById('events-list').innerHTML =
+        '<p class="events-loading">Termine konnten gerade nicht geladen werden.</p>';
+    });
+})();
+</script>
 
 <!-- BOOKING -->
 <section id="booking">
